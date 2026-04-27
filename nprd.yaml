@@ -1,0 +1,102 @@
+datadog:
+  apiKey: "{{apikey}}"
+  appKey: "{{appkey}}"
+  containerExclude: image:.*dd-lib.* image:.*node-exporter.* kube_namespace:.*metrics.* kube_namespace:.*istio-system.* kube_namespace:.*kiali-operator.* kube_namespace:.*kyverno.* kube_namespace:.*kubeturbo.* kube_namespace:.*cloudability.* kube_namespace:.*datadog.* kube_namespace:.*harness.* kube_namespace:.*kube-system.* kube_namespace:.*prometheus.* kube_namespace:.*cattle.* kube_namespace:.*cert-manager.* kube_namespace:.*kubecost.* kube_namespace:.*filebeat.* kube_namespace:.*monitoring.* kube_namespace:.*airflow.* kube_namespace:.*appdynamics.* kube_namespace:.*argo-rollouts.* kube_namespace:.*atlantis.* kube_namespace:.*atlas-finops.* kube_namespace:.*backstage.* kube_namespace:.*botkube.* kube_namespace:.*calico-system.* kube_namespace:.*darktrace.* kube_namespace:.*default.* kube_namespace:.*fleet-system.* kube_namespace:.*gitlab-agent-master.* kube_namespace:.*gitlab-runner.* kube_namespace:.*hello.* kube_namespace:.*kube-public.* kube_namespace:.*kube-node-lease.* kube_namespace:.*keda.* kube_namespace:.*lens-metrics.* kube_namespace:.*opencost.* kube_namespace:.*pyroscope.* kube_namespace:.*nginx.* kube_namespace:.*grafana.* kube_namespace:.*external-secrets-operator.* kube_namespace:.*local.* image:.*opentelemetry.* image:.*mcr.microsoft.com/oss/kubernetes.* image:.*prometheus.* image:.*exporter.* image:.*docker.io/istio/proxy.*
+  containerExcludeLogs: {}
+  clusterChecks:
+    enabled: false
+  env:
+    - name: DD_LOGS_CONFIG_PROCESSING_RULES
+      value: '[{"type":"include_at_match","name":"include_only_json_errors","pattern":"(?i)\"level\"\\s*:\\s*\"err|error|erro\"|(?i)\"status\"\\s*:\\s*\"err|error|erro\""}]'
+    - name: DD_APM_COMPUTE_STATS_BY_SPAN_KIND
+      value: "true"
+    - name: DD_APM_PEER_TAGS_AGGREGATION
+      value: "true"
+    - name: DD_APM_PEER_TAGS
+      value: '["_dd.base_service","amqp.destination","amqp.exchange","amqp.queue","aws.queue.name","bucketname","cassandra.cluster","cassandra.keyspace","db.cassandra.contact.points","db.couchbase.seed.nodes","db.hostname","db.instance","db.name","db.system","grpc.host","hazelcast.instance","hostname","http.host","messaging.destination","messaging.destination.name","messaging.kafka.bootstrap.servers","messaging.rabbitmq.exchange","messaging.system","mongodb.db","msmq.queue.path","net.peer.name","network.destination.name","peer.hostname","peer.service","queuename","rpc.service","rpc.system","server.address","streamname","tablename","topicname"]'
+  ignoreAutoConfig:
+    - rabbitmq
+    - docker
+  confd: {}
+  prometheusScrape:
+    enabled: false
+    serviceEndpoints: false
+  remoteConfiguration:
+    enabled: true
+  clusterName: "{{clustername}}"
+  logLevel: WARN
+  podLabelsAsTags:
+    "*": "%%label%%"
+  tags:
+    - "env:{{env}}"
+    - "journey:{{journey}}"
+  kubelet:
+    tlsVerify: false
+  dogstatsd:
+    useHostPort: true
+  logs:
+    enabled: false
+    containerCollectAll: false
+    autoMultiLineDetection: false
+  apm:
+    portEnabled: false
+    enabled: false
+    socketEnabled: false
+    instrumentation:
+      enabled: false
+      libVersions:
+        dotnet: v3.6.1
+        python: v2.17.3
+        java: v1.43.0
+        js: v5.81.0
+  processAgent:
+    processCollection: true
+  traceAgent:
+    env:
+      - name: DD_APM_IGNORE_RESOURCES
+        value: GET /actuator/health, GET /health, GET /admin/tool/probe/healthcheck.php, GET /healthcheck, GET /_cluster/health/, GET /middleware/healthcheck, GET /service/health
+  networkMonitoring:
+    enabled: false
+  otlp:
+    receiver:
+      protocols:
+        grpc:
+          enabled: true
+          useHostPort: true
+        http:
+          enabled: true
+          useHostPort: true
+clusterAgent:
+  image:
+    name: "gcr.io/datadoghq/cluster-agent:7.73.0"
+  confd: {}
+  replicas: 3
+  createPodDisruptionBudget: true
+  metricsProvider:
+    useDatadogMetrics: true
+agents:
+  image:
+    name: "gcr.io/datadoghq/agent:7.73.0"
+  tolerations:
+    - key: app
+      operator: Equal
+      value: rabbit
+      effect: NoSchedule
+    - key: mix-spot
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  useConfigMap: true
+  customAgentConfig:
+    kubelet_tls_verify: false
+    vector:
+      logs:
+        enabled: false
+        url: "http://vector:80"
+      metrics:
+        enabled: false
+        url: "http://vector:80"
+datadog-crds:
+  crds:
+    datadogMonitors: false
+    datadogMetrics: false
