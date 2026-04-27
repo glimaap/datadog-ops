@@ -1,0 +1,89 @@
+datadog:
+  apiKey: "{{apikey}}"
+  appKey: "{{appkey}}"
+  containerExclude: {}
+  containerExcludeLogs: {}
+  clusterChecks:
+    enabled: true
+  env:
+    - name: DD_LOGS_CONFIG_PROCESSING_RULES
+      value: '[{"type":"include_at_match","name":"include_only_json_errors","pattern":"(?i)\"level\"\\s*:\\s*\"err|error|erro\"|(?i)\"status\"\\s*:\\s*\"err|error|erro\""}]'
+    - name: DD_APM_COMPUTE_STATS_BY_SPAN_KIND
+      value: "true"
+    - name: DD_APM_PEER_TAGS_AGGREGATION
+      value: "true"
+    - name: DD_APM_PEER_TAGS
+      value: '["_dd.base_service","amqp.destination","amqp.exchange","amqp.queue","aws.queue.name","bucketname","cassandra.cluster","cassandra.keyspace","db.cassandra.contact.points","db.couchbase.seed.nodes","db.hostname","db.instance","db.name","db.system","grpc.host","hazelcast.instance","hostname","http.host","messaging.destination","messaging.destination.name","messaging.kafka.bootstrap.servers","messaging.rabbitmq.exchange","messaging.system","mongodb.db","msmq.queue.path","net.peer.name","network.destination.name","peer.hostname","peer.service","queuename","rpc.service","rpc.system","server.address","streamname","tablename","topicname"]'
+  ignoreAutoConfig:
+    - rabbitmq
+    - docker
+  confd: {}
+  remoteConfiguration:
+    enabled: true
+  clusterName: "{{clustername}}"
+  logLevel: INFO
+  tags:
+    - "env:{{env}}"
+    - "journey:{{journey}}"
+  kubelet:
+    tlsVerify: false
+  dogstatsd:
+    useHostPort: true
+  logs:
+    enabled: false
+    containerCollectAll: false
+    autoMultiLineDetection: false
+  apm:
+    portEnabled: false
+    enabled: false
+    socketEnabled: false
+    instrumentation:
+      enabled: false
+      libVersions:
+        dotnet: v3.6.1
+        python: v2.17.3
+        java: v1.43.0
+        js: v5.81.0
+  processAgent:
+    processCollection: true
+  traceAgent:
+    env:
+      - name: DD_APM_IGNORE_RESOURCES
+        value: GET /actuator/health, GET /health, GET /admin/tool/probe/healthcheck.php, GET /healthcheck, GET /_cluster/health/, GET /middleware/healthcheck, GET /service/health
+  networkMonitoring:
+    enabled: false
+  otlp:
+    receiver:
+      protocols:
+        grpc:
+          enabled: true
+          useHostPort: true
+        http:
+          enabled: true
+          useHostPort: true
+clusterAgent:
+  image:
+    name: "gcr.io/datadoghq/cluster-agent:7.73.0"
+  confd: {}
+  replicas: 3
+  createPodDisruptionBudget: true
+  metricsProvider:
+    useDatadogMetrics: true
+agents:
+  image:
+    name: "gcr.io/datadoghq/agent:7.73.0"
+  tolerations: []
+  useConfigMap: true
+  customAgentConfig:
+    kubelet_tls_verify: false
+    vector:
+      logs:
+        enabled: true
+        url: "http://vector:80"
+      metrics:
+        enabled: false
+        url: "http://vector:80"
+datadog-crds:
+  crds:
+    datadogMonitors: true
+    datadogMetrics: true
