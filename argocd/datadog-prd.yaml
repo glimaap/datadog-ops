@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: datadog-prd
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    # Helm chart oficial do Datadog
+    - repoURL: https://helm.datadoghq.com
+      chart: datadog
+      targetRevision: "*"
+      helm:
+        valueFiles:
+          - $values/datadog/values/base.yaml
+          - $values/datadog/values/prod.yaml
+    # Repositório com os values files
+    - repoURL: https://github.com/glimaap/datadog-ops
+      targetRevision: main
+      ref: values
+  destination:
+    # Substitua pela URL do API server do cluster de produção
+    server: https://prd-cluster-api-server:6443
+    namespace: datadog
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
