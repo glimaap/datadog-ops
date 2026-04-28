@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: datadog-nprd
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    # Helm chart oficial do Datadog
+    - repoURL: https://helm.datadoghq.com
+      chart: datadog
+      targetRevision: "*"
+      helm:
+        valueFiles:
+          - $values/datadog/values/base.yaml
+          - $values/datadog/values/nprd.yaml
+        values: |
+          datadog:
+            apiKeyExistingSecret: datadog
+            apiKeyExistingSecretKey: api-key
+            appKey: ""
+            clusterName: meu-cluster
+            tags:
+              - "env:dev"
+              - "journey:teste-lab"
+          agents:
+            image:
+              registry: gcr.io/datadoghq
+              name: agent
+              tag: "7.73.0"
+          clusterAgent:
+            image:
+              registry: gcr.io/datadoghq
+              name: cluster-agent
+              tag: "7.73.0"
+    # Repositório com os values files
+    - repoURL: https://github.com/glimaap/datadog-ops
+      targetRevision: main
+      ref: values
+  destination:
+    # Cluster k3d local onde o ArgoCD está instalado
+    server: https://kubernetes.default.svc
+    namespace: datadog
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
