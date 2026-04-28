@@ -6,6 +6,8 @@ Guia passo a passo para configurar o ArgoCD para sincronizar o Datadog Agent via
 
 ## Visão Geral da Arquitetura
 
+![Diagrama da arquitetura GitOps do Datadog com ArgoCD](datadog-argocd-gitops.png)
+
 ```
 GitHub (datadog-ops)
 └── datadog/values/
