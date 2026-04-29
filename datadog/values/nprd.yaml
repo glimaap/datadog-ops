@@ -35,13 +35,13 @@ datadog:
   dogstatsd:
     useHostPort: true
   logs:
-    enabled: false
-    containerCollectAll: false
-    autoMultiLineDetection: false
+    enabled: true
+    containerCollectAll: true
+    autoMultiLineDetection: true
   apm:
-    portEnabled: false
-    enabled: false
-    socketEnabled: false
+    portEnabled: true
+    enabled: true
+    socketEnabled: true
     instrumentation:
       enabled: false
       libVersions:
