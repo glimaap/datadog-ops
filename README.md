@@ -6,9 +6,10 @@ Repositório de configuração do Datadog Agent para clusters Kubernetes, gerenc
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `base.yaml` | Valores base compartilhados entre todos os ambientes |
-| `nprd.yaml` | Overrides para ambientes não-produção |
-| `prod.yaml` | Overrides para ambientes de produção |
+| `base.yaml` | Configuração completa e fonte única da verdade — reflete os valores de produção |
+| `nprd.yaml` | Overrides para ambientes não-produção (apenas os 6 valores que diferem de prod) |
+
+> `prod.yaml` não existe. Ambientes de produção usam somente `base.yaml`.
 
 ## Visão Geral
 
@@ -23,33 +24,33 @@ As configurações cobrem os seguintes componentes do Datadog:
 
 ## Diferenças por Ambiente
 
-| Feature | base | nprd | prod |
-|---------|------|------|------|
-| Log collection | `false` | `false` | `true` |
-| APM | `false` | `false` | `true` |
-| Cluster Checks | `true` | `false` | `true` |
-| Vector logs | `true` | `false` | `true` |
-| DatadogMonitors CRD | `true` | `false` | `true` |
-| Log level | `INFO` | `WARN` | `WARN` |
-| Container exclusions | mínimo | extenso | extenso |
+`nprd.yaml` sobrescreve apenas os valores abaixo. Tudo mais herda de `base.yaml`:
+
+| Propriedade | base (prod) | nprd |
+|-------------|-------------|------|
+| `datadog.clusterChecks.enabled` | `true` | `false` |
+| `clusterAgent.replicas` | `3` | `1` |
+| `clusterAgent.createPodDisruptionBudget` | `true` | `false` |
+| `agents.customAgentConfig.vector.logs.enabled` | `true` | `false` |
+| `datadog-crds.crds.datadogMonitors` | `true` | `false` |
+| `datadog-crds.crds.datadogMetrics` | `true` | `false` |
 
 ## Uso
 
 Os arquivos são aplicados via Helm com sobreposição de valores:
 
 ```bash
-# Non-production
+# Production
 helm upgrade --install datadog datadog/datadog \
   -f base.yaml \
-  -f nprd.yaml \
   --set datadog.apiKey=<API_KEY> \
   --set datadog.appKey=<APP_KEY> \
   --set datadog.clusterName=<CLUSTER_NAME>
 
-# Production
+# Non-production
 helm upgrade --install datadog datadog/datadog \
   -f base.yaml \
-  -f prod.yaml \
+  -f nprd.yaml \
   --set datadog.apiKey=<API_KEY> \
   --set datadog.appKey=<APP_KEY> \
   --set datadog.clusterName=<CLUSTER_NAME>

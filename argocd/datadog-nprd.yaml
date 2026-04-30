@@ -41,9 +41,21 @@ spec:
     # Cluster k3d local onde o ArgoCD está instalado
     server: https://kubernetes.default.svc
     namespace: datadog
+  ignoreDifferences:
+    - kind: ConfigMap
+      name: datadog-nprd-confd
+      namespace: datadog
+      jsonPointers:
+        - /data
+    - kind: ConfigMap
+      name: datadog-nprd-cluster-agent-confd
+      namespace: datadog
+      jsonPointers:
+        - /data
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true
