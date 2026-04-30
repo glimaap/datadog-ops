@@ -32,6 +32,7 @@ spec:
           chart: datadog
           targetRevision: "*"
           helm:
+            releaseName: datadog
             valueFiles:
               - $values/datadog/values/base.yaml
             valuesObject:
@@ -55,12 +56,12 @@ spec:
         namespace: datadog
       ignoreDifferences:
         - kind: ConfigMap
-          name: 'datadog-{{.clusterName}}-confd'
+          name: datadog-confd
           namespace: datadog
           jsonPointers:
             - /data
         - kind: ConfigMap
-          name: 'datadog-{{.clusterName}}-cluster-agent-confd'
+          name: datadog-cluster-agent-confd
           namespace: datadog
           jsonPointers:
             - /data
