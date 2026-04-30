@@ -13,7 +13,6 @@ spec:
       helm:
         valueFiles:
           - $values/datadog/values/base.yaml
-          - $values/datadog/values/prod.yaml
     # Repositório com os values files
     - repoURL: https://github.com/glimaap/datadog-ops
       targetRevision: main
@@ -22,9 +21,21 @@ spec:
     # Substitua pela URL do API server do cluster de produção
     server: https://prd-cluster-api-server:6443
     namespace: datadog
+  ignoreDifferences:
+    - kind: ConfigMap
+      name: datadog-prd-confd
+      namespace: datadog
+      jsonPointers:
+        - /data
+    - kind: ConfigMap
+      name: datadog-prd-cluster-agent-confd
+      namespace: datadog
+      jsonPointers:
+        - /data
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true

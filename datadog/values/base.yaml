@@ -1,7 +1,7 @@
 datadog:
   apiKey: "{{apikey}}"
   appKey: "{{appkey}}"
-  containerExclude: {}
+  containerExclude: image:.*dd-lib.* image:.*node-exporter.* kube_namespace:.*metrics.* kube_namespace:.*istio-system.* kube_namespace:.*kiali-operator.* kube_namespace:.*kyverno.* kube_namespace:.*kubeturbo.* kube_namespace:.*cloudability.* kube_namespace:.*datadog.* kube_namespace:.*harness.* kube_namespace:.*kube-system.* kube_namespace:.*prometheus.* kube_namespace:.*cattle.* kube_namespace:.*cert-manager.* kube_namespace:.*kubecost.* kube_namespace:.*filebeat.* kube_namespace:.*monitoring.* kube_namespace:.*airflow.* kube_namespace:.*appdynamics.* kube_namespace:.*argo-rollouts.* kube_namespace:.*atlantis.* kube_namespace:.*atlas-finops.* kube_namespace:.*backstage.* kube_namespace:.*botkube.* kube_namespace:.*calico-system.* kube_namespace:.*darktrace.* kube_namespace:.*default.* kube_namespace:.*fleet-system.* kube_namespace:.*gitlab-agent-master.* kube_namespace:.*gitlab-runner.* kube_namespace:.*hello.* kube_namespace:.*kube-public.* kube_namespace:.*kube-node-lease.* kube_namespace:.*keda.* kube_namespace:.*lens-metrics.* kube_namespace:.*opencost.* kube_namespace:.*pyroscope.* kube_namespace:.*nginx.* kube_namespace:.*grafana.* kube_namespace:.*external-secrets-operator.* kube_namespace:.*local.* image:.*opentelemetry.* image:.*mcr.microsoft.com/oss/kubernetes.* image:.*prometheus.* image:.*exporter.* image:.*docker.io/istio/proxy.*
   containerExcludeLogs: {}
   clusterChecks:
     enabled: true
@@ -18,10 +18,15 @@ datadog:
     - rabbitmq
     - docker
   confd: {}
+  prometheusScrape:
+    enabled: false
+    serviceEndpoints: false
   remoteConfiguration:
     enabled: true
   clusterName: "{{clustername}}"
-  logLevel: INFO
+  logLevel: WARN
+  podLabelsAsTags:
+    "*": "%%label%%"
   tags:
     - "env:{{env}}"
     - "journey:{{journey}}"
@@ -30,13 +35,13 @@ datadog:
   dogstatsd:
     useHostPort: true
   logs:
-    enabled: false
-    containerCollectAll: false
-    autoMultiLineDetection: false
+    enabled: true
+    containerCollectAll: true
+    autoMultiLineDetection: true
   apm:
-    portEnabled: false
-    enabled: false
-    socketEnabled: false
+    portEnabled: true
+    enabled: true
+    socketEnabled: true
     instrumentation:
       enabled: false
       libVersions:
@@ -72,7 +77,15 @@ clusterAgent:
 agents:
   image:
     name: "gcr.io/datadoghq/agent:7.73.0"
-  tolerations: []
+  tolerations:
+    - key: app
+      operator: Equal
+      value: rabbit
+      effect: NoSchedule
+    - key: mix-spot
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
   useConfigMap: true
   customAgentConfig:
     kubelet_tls_verify: false
