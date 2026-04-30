@@ -1,33 +1,32 @@
-# ArgoCD — Sync de Helm Chart com Values por Ambiente
+# ArgoCD — Multi-Cluster com ApplicationSet e Values Compartilhados
 
-Guia passo a passo para configurar o ArgoCD para sincronizar o Datadog Agent via Helm chart, aplicando arquivos de values diferentes por ambiente (nprd e prd), a partir de um repositório Git.
+Guia para configurar o Datadog Agent em múltiplos clusters Kubernetes via ArgoCD ApplicationSet, com um único repositório de values compartilhado entre todos os clusters.
 
 ---
 
 ## Visão Geral da Arquitetura
 
-![Diagrama da arquitetura GitOps do Datadog com ArgoCD](datadog-argocd-gitops.png)
-
 ```
-GitHub (datadog-ops)
-└── datadog/values/
-    ├── base.yaml    → values comuns a todos os ambientes
-    ├── nprd.yaml    → overrides para não-produção (k3d)
-    └── prod.yaml    → overrides para produção
-
-ArgoCD
-├── Application: datadog-nprd → cluster k3d  → base + nprd
-└── Application: datadog-prd  → cluster prd  → base + prod
+datadog-ops (GitHub)
+└── datadog/values/base.yaml   ← fonte única da verdade (Eng. Obs)
+        ↑
+        | todos os clusters referenciam o mesmo repo/branch
+        |
+├── ApplicationSet Cluster A  →  Datadog no Cluster A  →  Datadog SaaS
+├── ApplicationSet Cluster B  →  Datadog no Cluster B  →  Datadog SaaS
+└── ApplicationSet Cluster C  →  Datadog no Cluster C  →  Datadog SaaS
 ```
 
-O chart Helm do Datadog vem do repositório oficial (`https://helm.datadoghq.com`). Os values files ficam no repositório Git. O ArgoCD combina os dois usando o recurso **multiple sources** (disponível a partir da versão 2.6).
+**Responsabilidades:**
+- **Eng. Obs** — mantém `base.yaml` e o template ApplicationSet neste repositório
+- **Time SRE** — copia o template para o ArgoCD de cada cluster; adiciona overrides específicos no `generators.list.elements`; não altera o `base.yaml`
 
 ---
 
 ## Pré-requisitos
 
-- ArgoCD >= 2.6 instalado no cluster
-- Repositório Git com os values files acessível pelo ArgoCD
+- ArgoCD >= 2.6 instalado em cada cluster (suporte a `sources` múltiplos e `goTemplate`)
+- Repositório Git com os values files acessível pelo ArgoCD de cada cluster
 - `kubectl` configurado para o cluster alvo
 - Secret com a API key do Datadog criado no namespace `datadog`
 
@@ -35,23 +34,20 @@ O chart Helm do Datadog vem do repositório oficial (`https://helm.datadoghq.com
 
 ## Passo 1 — Estrutura do Repositório
 
-Organize os values files no repositório Git:
-
 ```
-datadog/
-└── values/
-    ├── base.yaml    # configurações base compartilhadas
-    ├── nprd.yaml    # overrides de não-produção
-    └── prod.yaml    # overrides de produção
+datadog-ops/
+├── argocd/
+│   └── applicationset-prd.yaml   # template ApplicationSet
+└── datadog/
+    └── values/
+        └── base.yaml             # configuração completa — padrão para todos os clusters
 ```
-
-**Regra de merge:** o ArgoCD aplica os arquivos na ordem declarada. O arquivo seguinte sobrescreve keys do anterior. Exemplo: `base.yaml` define `replicas: 3`, `nprd.yaml` sobrescreve com `replicas: 1`.
 
 ---
 
 ## Passo 2 — Criar o Secret da API Key
 
-O Helm chart do Datadog precisa da API key. Crie um Secret no namespace antes de aplicar o Application:
+Crie o Secret no cluster **antes** de aplicar o ApplicationSet:
 
 ```bash
 kubectl create namespace datadog
@@ -61,179 +57,174 @@ kubectl create secret generic datadog \
   -n datadog
 ```
 
-> **Importante:** Este secret não é gerenciado pelo ArgoCD. Se o namespace for recriado ou o secret deletado, será necessário recriar manualmente (ou usar ExternalSecrets/SealedSecrets para gerenciar via GitOps).
+> **Importante:** Este Secret não é gerenciado pelo ArgoCD. Se for deletado, recrie manualmente ou use ExternalSecrets/SealedSecrets.
 
 ---
 
-## Passo 3 — Estrutura do ArgoCD Application
+## Passo 3 — Entendendo o ApplicationSet
 
-O recurso `Application` do ArgoCD usa `sources` (plural) para combinar:
-- **Source 1:** chart Helm externo (com os `valueFiles` referenciando o source 2)
-- **Source 2:** repositório Git com os values files (exposto via `ref: values`)
+O `ApplicationSet` substitui os `Application` individuais. Com ele, um único manifest no ArgoCD gera automaticamente uma `Application` por entrada no `generators.list.elements`.
 
-### Por que `sources` (plural) e não `source` (singular)?
+**Por que `goTemplate: true`?**
 
-Com `source` singular é possível apontar para um chart Helm externo **ou** para um repositório Git — não os dois ao mesmo tempo. O `sources` plural resolve isso e o `ref: values` cria um alias (`$values`) que o primeiro source usa para localizar os arquivos de values no Git.
+Habilita sintaxe Go template nas variáveis, permitindo valores padrão com `{{ default "valor" .parametro }}`. Assim, overrides por cluster são opcionais — se não declarados no elemento, o valor do `base.yaml` prevalece.
+
+**Por que `sources` (plural)?**
+
+Necessário para combinar o chart Helm externo (`helm.datadoghq.com`) com os values files do repositório Git. O `ref: values` cria o alias `$values` que o primeiro source usa para localizar os arquivos.
 
 ---
 
-## Passo 4 — Manifest para Ambiente NPRD (k3d)
+## Passo 4 — Template ApplicationSet
 
-Crie o arquivo `argocd/datadog-nprd.yaml`:
+Arquivo: `argocd/applicationset-prd.yaml`
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: datadog-nprd
-  namespace: argocd
-spec:
-  project: default
-  sources:
-    # Source 1: chart Helm oficial do Datadog
-    - repoURL: https://helm.datadoghq.com
-      chart: datadog
-      targetRevision: "*"
-      helm:
-        valueFiles:
-          - $values/datadog/values/base.yaml   # base sempre primeiro
-          - $values/datadog/values/nprd.yaml   # override de ambiente
-        values: |
-          datadog:
-            apiKeyExistingSecret: datadog       # referencia o Secret criado no Passo 2
-            apiKeyExistingSecretKey: api-key
-            appKey: ""
-            clusterName: <NOME_DO_CLUSTER>
-            tags:
-              - "env:<ENV>"
-              - "journey:<JOURNEY>"
-          agents:
-            image:
-              registry: gcr.io/datadoghq
-              name: agent
-              tag: "7.73.0"
-          clusterAgent:
-            image:
-              registry: gcr.io/datadoghq
-              name: cluster-agent
-              tag: "7.73.0"
-
-    # Source 2: repositório Git com os values files
-    - repoURL: https://github.com/<ORG>/<REPO>.git
-      targetRevision: main
-      ref: values   # expõe este repo como $values para o source 1
-
-  destination:
-    server: https://kubernetes.default.svc   # cluster onde o ArgoCD está instalado
-    namespace: datadog
-
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-```
-
----
-
-## Passo 5 — Manifest para Ambiente PRD
-
-Crie o arquivo `argocd/datadog-prd.yaml` com as mesmas configurações, ajustando:
-- `name`: `datadog-prd`
-- `valueFiles`: trocar `nprd.yaml` por `prod.yaml`
-- `destination.server`: URL do API server do cluster de produção
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+kind: ApplicationSet
 metadata:
   name: datadog-prd
   namespace: argocd
 spec:
-  project: default
-  sources:
-    - repoURL: https://helm.datadoghq.com
-      chart: datadog
-      targetRevision: "*"
-      helm:
-        valueFiles:
-          - $values/datadog/values/base.yaml
-          - $values/datadog/values/prod.yaml
-        values: |
-          datadog:
-            apiKeyExistingSecret: datadog
-            apiKeyExistingSecretKey: api-key
-            appKey: ""
-            clusterName: <NOME_DO_CLUSTER_PRD>
-            tags:
-              - "env:prd"
-              - "journey:<JOURNEY>"
-          agents:
-            image:
-              registry: gcr.io/datadoghq
-              name: agent
-              tag: "7.73.0"
-          clusterAgent:
-            image:
-              registry: gcr.io/datadoghq
-              name: cluster-agent
-              tag: "7.73.0"
-    - repoURL: https://github.com/<ORG>/<REPO>.git
-      targetRevision: main
-      ref: values
-  destination:
-    server: https://<PRD_CLUSTER_API_SERVER>:6443   # URL do API server do cluster prd
-    namespace: datadog
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
-```
-
-Para obter a URL do API server do cluster prd:
-
-```bash
-# Aponte o kubeconfig para o cluster de prd e execute:
-kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}'
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - list:
+        elements:
+          # Um elemento por cluster
+          # Campos obrigatórios: clusterName, server, journey
+          - clusterName: cluster-a
+            server: https://cluster-a-api:6443
+            journey: minha-journey
+          # Exemplo com override por cluster:
+          # - clusterName: cluster-b
+          #   server: https://cluster-b-api:6443
+          #   journey: outra-journey
+          #   clusterAgentReplicas: "1"
+  template:
+    metadata:
+      name: 'datadog-{{.clusterName}}'
+    spec:
+      project: default
+      sources:
+        - repoURL: https://helm.datadoghq.com
+          chart: datadog
+          targetRevision: "*"
+          helm:
+            valueFiles:
+              - $values/datadog/values/base.yaml
+            valuesObject:
+              datadog:
+                apiKeyExistingSecret: datadog
+                apiKeyExistingSecretKey: api-key
+                appKey: ""
+                clusterName: '{{.clusterName}}'
+                tags:
+                  - env:prd
+                  - 'journey:{{.journey}}'
+              # Overrides opcionais por cluster:
+              # clusterAgent:
+              #   replicas: '{{ default "3" .clusterAgentReplicas }}'
+        - repoURL: https://github.com/<ORG>/<REPO>.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: '{{.server}}'
+        namespace: datadog
+      ignoreDifferences:
+        - kind: ConfigMap
+          name: 'datadog-{{.clusterName}}-confd'
+          namespace: datadog
+          jsonPointers:
+            - /data
+        - kind: ConfigMap
+          name: 'datadog-{{.clusterName}}-cluster-agent-confd'
+          namespace: datadog
+          jsonPointers:
+            - /data
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - RespectIgnoreDifferences=true
 ```
 
 ---
 
-## Passo 6 — Aplicar os Manifests
+## Passo 5 — Adicionar um Novo Cluster
 
-```bash
-# Aplicar no cluster onde o ArgoCD está instalado
-kubectl apply -f argocd/datadog-nprd.yaml
-kubectl apply -f argocd/datadog-prd.yaml
+Edite o `generators.list.elements` do ApplicationSet no ArgoCD do cluster:
+
+```yaml
+elements:
+  - clusterName: cluster-a
+    server: https://cluster-a-api:6443
+    journey: payments
+  # Novo cluster:
+  - clusterName: cluster-d
+    server: https://cluster-d-api:6443
+    journey: catalog
 ```
 
-O ArgoCD detecta os Applications e inicia o sync automaticamente. Acompanhe pelo CLI ou UI:
+O ArgoCD detecta a mudança e cria automaticamente a Application `datadog-cluster-d`.
+
+---
+
+## Passo 6 — Overrides por Cluster
+
+Para customizar o Datadog de um cluster específico sem alterar o `base.yaml`, adicione o parâmetro no elemento e descomente o override no `valuesObject` do template:
+
+**No elemento do gerador:**
+```yaml
+- clusterName: cluster-b
+  server: https://cluster-b-api:6443
+  journey: checkout
+  clusterAgentReplicas: "1"
+```
+
+**No template (valuesObject):**
+```yaml
+valuesObject:
+  clusterAgent:
+    replicas: '{{ default "3" .clusterAgentReplicas }}'
+```
+
+O `default "3"` garante que clusters sem esse parâmetro continuem usando o valor do `base.yaml`.
+
+---
+
+## Passo 7 — Aplicar o ApplicationSet
 
 ```bash
-# Verificar status
-kubectl get application -n argocd
+kubectl apply -f argocd/applicationset-prd.yaml
+```
 
-# Acompanhar pods sendo criados
+Acompanhe o sync:
+
+```bash
+kubectl get applicationset -n argocd
+kubectl get application -n argocd
 kubectl get pods -n datadog -w
 ```
 
 ---
 
-## Passo 7 — Verificar o Sync
+## Fluxo GitOps — Como Fazer uma Mudança
 
-```bash
-kubectl get application -n argocd datadog-nprd -o wide
-# SYNC STATUS: Synced   HEALTH STATUS: Healthy
+**Mudança que afeta todos os clusters** (ex: atualizar versão do agent):
+1. Edite `datadog/values/base.yaml`
+2. Abra PR para `main`
+3. Após merge, todos os ApplicationSets sincronizam automaticamente
+
+**Mudança específica de um cluster** (ex: override de réplicas):
+1. Adicione o parâmetro no `generators.list.elements` do ApplicationSet local
+2. Descomente o override no `valuesObject` do template
+3. `kubectl apply` no ArgoCD do cluster (não requer PR neste repositório)
+
 ```
-
-Se o status for `OutOfSync` ou `Degraded`, verifique as conditions:
-
-```bash
-kubectl get application -n argocd datadog-nprd \
-  -o jsonpath='{.status.conditions}' | python3 -m json.tool
+base.yaml atualizado → PR → Merge em main → ArgoCD sync em todos os clusters
 ```
 
 ---
@@ -242,11 +233,11 @@ kubectl get application -n argocd datadog-nprd \
 
 ### Placeholders `{{variavel}}` nos values files
 
-O Helm interpreta `{{` como sintaxe de template Go e falha se o conteúdo não for uma função válida. Substitua os placeholders por valores reais via `helm.values` inline no Application (como feito nos manifestos acima) ou via `helm.parameters`.
+O Helm interpreta `{{` como sintaxe de template Go. Use `valuesObject` no ApplicationSet para passar valores dinâmicos — nunca deixe placeholders no `base.yaml`.
 
 ### `InvalidImageName` nos pods
 
-Ocorre quando o campo `agents.image.name` contém o path completo da imagem (ex: `gcr.io/datadoghq/agent:7.73.0`). O chart concatena o registry padrão na frente, gerando um nome inválido. Corrija separando os campos no `helm.values` inline:
+Separe registry, name e tag nos campos corretos:
 
 ```yaml
 agents:
@@ -258,31 +249,17 @@ agents:
 
 ### Secret da API key deletado
 
-Se o secret `datadog` for deletado (ex: após um `helm uninstall` de uma instalação anterior), os pods do cluster-agent falham com `You must set a DD_API_KEY`. Recrie o secret manualmente:
-
 ```bash
 kubectl create secret generic datadog \
   --from-literal=api-key=<SUA_API_KEY> \
   -n datadog
 ```
 
-### Duas instalações rodando em paralelo
+### Mudança no base.yaml afeta clusters indesejados
 
-Ao migrar de uma instalação manual (`helm install`) para GitOps (ArgoCD), ambas ficam ativas simultaneamente, duplicando coleta de métricas e gerando custo. Remova a instalação antiga:
+Para mudanças de alto risco, desative o sync automático temporariamente:
 
-```bash
-helm uninstall datadog -n datadog
-```
-
----
-
-## Fluxo GitOps — Como Fazer uma Mudança
-
-1. Edite o values file desejado no repositório Git
-2. Abra um Pull Request para `main`
-3. Após merge, o ArgoCD detecta a mudança automaticamente (polling a cada ~3 minutos)
-4. O sync é aplicado no cluster correspondente sem intervenção manual
-
-```
-Editar values → PR → Merge em main → ArgoCD sync automático → Cluster atualizado
+```yaml
+syncPolicy:
+  automated: null   # sync manual até validar a mudança
 ```

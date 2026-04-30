@@ -1,0 +1,71 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: datadog-prd
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=zero"]
+  generators:
+    - list:
+        elements:
+          # Adicione um elemento por cluster PRD
+          # Campos obrigatórios: clusterName, server, journey
+          - clusterName: cluster-a
+            server: https://cluster-a-api:6443
+            journey: minha-journey
+          # Exemplo com override específico por cluster:
+          # - clusterName: cluster-b
+          #   server: https://cluster-b-api:6443
+          #   journey: outra-journey
+          #   clusterAgentReplicas: "1"   # sobrescreve o padrão de 3 réplicas do base.yaml
+  template:
+    metadata:
+      name: 'datadog-{{.clusterName}}'
+    spec:
+      project: default
+      sources:
+        # Source 1: Helm chart oficial do Datadog
+        - repoURL: https://helm.datadoghq.com
+          chart: datadog
+          targetRevision: "*"
+          helm:
+            valueFiles:
+              - $values/datadog/values/base.yaml
+            valuesObject:
+              datadog:
+                apiKeyExistingSecret: datadog
+                apiKeyExistingSecretKey: api-key
+                appKey: ""
+                clusterName: '{{.clusterName}}'
+                tags:
+                  - env:prd
+                  - 'journey:{{.journey}}'
+              # Overrides opcionais por cluster — descomente conforme necessário:
+              # clusterAgent:
+              #   replicas: '{{ default "3" .clusterAgentReplicas }}'
+        # Source 2: Repositório com os values files
+        - repoURL: https://github.com/glimaap/datadog-ops
+          targetRevision: main
+          ref: values
+      destination:
+        server: '{{.server}}'
+        namespace: datadog
+      ignoreDifferences:
+        - kind: ConfigMap
+          name: 'datadog-{{.clusterName}}-confd'
+          namespace: datadog
+          jsonPointers:
+            - /data
+        - kind: ConfigMap
+          name: 'datadog-{{.clusterName}}-cluster-agent-confd'
+          namespace: datadog
+          jsonPointers:
+            - /data
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - RespectIgnoreDifferences=true
