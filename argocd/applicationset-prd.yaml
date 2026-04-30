@@ -9,14 +9,16 @@ spec:
   generators:
     - list:
         elements:
-          # Adicione um elemento por cluster PRD
-          # Campos obrigatórios: clusterName, server, journey
+          # Adicione um elemento por cluster
+          # Campos obrigatórios: clusterName, server, env, journey
           - clusterName: cluster-a
             server: https://cluster-a-api:6443
+            env: prd
             journey: minha-journey
           # Exemplo com override específico por cluster:
           # - clusterName: cluster-b
           #   server: https://cluster-b-api:6443
+          #   env: prd
           #   journey: outra-journey
           #   clusterAgentReplicas: "1"   # sobrescreve o padrão de 3 réplicas do base.yaml
   template:
@@ -30,6 +32,7 @@ spec:
           chart: datadog
           targetRevision: "*"
           helm:
+            releaseName: datadog
             valueFiles:
               - $values/datadog/values/base.yaml
             valuesObject:
@@ -39,7 +42,7 @@ spec:
                 appKey: ""
                 clusterName: '{{.clusterName}}'
                 tags:
-                  - env:prd
+                  - 'env:{{.env}}'
                   - 'journey:{{.journey}}'
               # Overrides opcionais por cluster — descomente conforme necessário:
               # clusterAgent:
@@ -53,12 +56,12 @@ spec:
         namespace: datadog
       ignoreDifferences:
         - kind: ConfigMap
-          name: 'datadog-{{.clusterName}}-confd'
+          name: datadog-confd
           namespace: datadog
           jsonPointers:
             - /data
         - kind: ConfigMap
-          name: 'datadog-{{.clusterName}}-cluster-agent-confd'
+          name: datadog-cluster-agent-confd
           namespace: datadog
           jsonPointers:
             - /data
