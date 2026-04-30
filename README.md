@@ -2,7 +2,24 @@
 
 Repositório de configuração do Datadog Agent para clusters Kubernetes, gerenciado via Helm chart (`datadog/datadog`).
 
-## Estrutura
+## Estrutura de Pastas
+
+```
+datadog-ops/
+├── argocd/
+│   ├── datadog-nprd.yaml       # ArgoCD Application para ambientes não-produção
+│   └── datadog-prd.yaml        # ArgoCD Application para produção
+├── datadog/
+│   └── values/
+│       ├── base.yaml           # Fonte única da verdade — valores completos de produção
+│       └── nprd.yaml           # Overrides de nprd (apenas 6 diferenças em relação ao base)
+└── documents/
+    ├── argocd-multienv-setup.md        # Guia de setup multi-ambiente com ArgoCD
+    ├── datadog-architecture.drawio     # Diagrama de arquitetura (draw.io)
+    └── datadog-architecture.drawio.png # Diagrama de arquitetura (PNG)
+```
+
+## Valores
 
 | Arquivo | Descrição |
 |---------|-----------|
