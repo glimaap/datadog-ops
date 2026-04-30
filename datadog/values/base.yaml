@@ -68,7 +68,9 @@ datadog:
           useHostPort: true
 clusterAgent:
   image:
-    name: "gcr.io/datadoghq/cluster-agent:7.73.0"
+    registry: gcr.io/datadoghq
+    name: cluster-agent
+    tag: "7.73.0"
   confd: {}
   replicas: 3
   createPodDisruptionBudget: true
@@ -76,7 +78,9 @@ clusterAgent:
     useDatadogMetrics: true
 agents:
   image:
-    name: "gcr.io/datadoghq/agent:7.73.0"
+    registry: gcr.io/datadoghq
+    name: agent
+    tag: "7.73.0"
   tolerations:
     - key: app
       operator: Equal
